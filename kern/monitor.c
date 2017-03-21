@@ -10,6 +10,7 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -21,10 +22,15 @@ struct Command {
 	int (*func)(int argc, char** argv, struct Trapframe* tf);
 };
 
+int mon_showmappings(int argc, char ** argv, struct Trapframe *tf);
+int mon_chperm(int argc, char ** argv, struct Trapframe * tf);
+
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Display backtrace debug infomation", mon_backtrace },
+	{ "showmappings", "Display physical page mappings", mon_showmappings },
+	{ "chperm", "Change the permission of a virtual page", mon_chperm },
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -85,6 +91,68 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
+int
+mon_showmappings(int argc, char ** argv, struct Trapframe *tf)
+{
+	if(argc != 3) {
+		cprintf("usage: showmappings VA_BEGIN VA_END\n");
+		return 0;
+	}
+	// \t隔开的两个至少空6格
+	// printf: %[flags][width][.perc][F|N|h|l]type
+	cprintf("  VADDR       PADDR       PTE_U   PTE_W   PTE_P\n");
+	char *end_char;
+	// 对于uintptr_t，加１时它的值加１还是加４??
+	uintptr_t va_beg = ROUNDDOWN(strtol(argv[1], &end_char, 16), PGSIZE);
+	if(*end_char != '\0') goto mon_showmappings_arg_error;
+	uintptr_t va_end = ROUNDDOWN(strtol(argv[2], &end_char, 16), PGSIZE);
+	if(*end_char != '\0') goto mon_showmappings_arg_error;
+	for(; va_beg <= va_end; va_beg += PGSIZE) {
+		pte_t * pte_ptr = pgdir_walk(kern_pgdir, (void *)va_beg, 0);
+		if(pte_ptr == NULL) // no page table
+			cprintf("  0x%08x  -           -       -       -\n", va_beg);
+		else if(!(*pte_ptr & PTE_P)) // page not present
+			cprintf("  0x%08x  -           -       -       0\n", va_beg);
+		else
+			cprintf("  0x%08x  0x%08x  %d       %d       %d\n",
+				va_beg, PTE_ADDR(*pte_ptr),
+				!!(*pte_ptr & PTE_U), !!(*pte_ptr & PTE_W), !!(*pte_ptr & PTE_P));
+	}
+	return 0;
+mon_showmappings_arg_error:
+	cprintf("showmappings: ERROR: parameters not correct. See -h\n");
+	return 0; // 1?
+}
+
+int
+mon_chperm(int argc, char ** argv, struct Trapframe * tf)
+{
+	if(argc != 3) {
+		cprintf("Usage: chperm VADDR PERM\n");
+		cprintf("Change the permission of vitual address VADDR to PERM.\n");
+		cprintf(" PERM:\t0\t2\t4\t6\n");
+		cprintf(" KERN:\tR\tRW\tRW\tRW\n"); // 4 - KERN RW ??
+		cprintf(" USER:\t-\t-\tR\tRW\n");
+		return 0;
+	}
+	char* end_char;
+	uintptr_t vaddr = ROUNDDOWN(strtol(argv[1], &end_char, 16), PGSIZE);
+	if(*end_char != '\0') goto mon_chperm_arg_error;
+	uintptr_t perm = strtol(argv[2], &end_char, 10);
+	if(*end_char != '\0') goto mon_chperm_arg_error;
+	pte_t * pte_ptr = pgdir_walk(kern_pgdir, (void *)vaddr, 0);
+	if(pte_ptr == NULL || !(*pte_ptr & PTE_P)) {
+		cprintf("ERROR: page not present!\n");
+		return 0;
+	}
+	perm ++; // present-bit = 1;
+	*pte_ptr = (*pte_ptr >> 3 << 3) | perm;
+	return 0;
+
+mon_chperm_arg_error:
+	cprintf("ERROR: parameters not correct!\n");
+	return 0;
+}
 
 /***** Kernel monitor command interpreter *****/
 
