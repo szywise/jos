@@ -116,6 +116,11 @@ env_init(void)
 {
 	// Set up envs array
 	// LAB 3: Your code here.
+	memset(envs, 0, NENV * sizeof(struct Env));
+	int i;
+	for(i = 0; i < NENV-1; i++) 
+		envs[i].env_link = &envs[i+1];
+	env_free_list = &envs[0];
 
 	// Per-CPU part of the initialization
 	env_init_percpu();
@@ -179,11 +184,30 @@ env_setup_vm(struct Env *e)
 	//    - The functions in kern/pmap.h are handy.
 
 	// LAB 3: Your code here.
-
+	p->pp_ref++;
+	e->env_pgdir = (pde_t *) page2kva(p); // | PTE_U | PTE_W | PTE_P);??
+	memcpy(e->env_pgdir, kern_pgdir, PGSIZE);
+	
+/*
+// UENV, UTOP
+	boot_map_region(e->env_pgdir, UENVS, sizeof(struct Env) * NENV,
+					PADDR(envs), PTE_U | PTE_P);
+// UPAGES
+	boot_map_region(e->env_pgdir, UPAGES, sizeof(struct PageInfo) * npages,
+					PADDR(pages), PTE_U | PTE_P);
 	// UVPT maps the env's own page table read-only.
 	// Permissions: kernel R, user R
+*/
+// UVPT
 	e->env_pgdir[PDX(UVPT)] = PADDR(e->env_pgdir) | PTE_P | PTE_U;
-
+/*
+// KSTACKTOP-KSTKSIZE
+	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE,
+					PADDR(bootstack), PTE_W | PTE_P);
+// KENRBASE
+	boot_map_region(kern_pgdir, KERNBASE, 1<<28,
+					0, PTE_W | PTE_P);
+*/
 	return 0;
 }
 
@@ -210,7 +234,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 		return r;
 
 	// Generate an env_id for this environment.
-	generation = (e->env_id + (1 << ENVGENSHIFT)) & ~(NENV - 1);
+	generation = (e->env_id + (1 << ENVGENSHIFT)) & ~(NENV - 1); // env_id在第13位上加一个1, 低9位清零 // env_id第一次使用应该是0啊。
 	if (generation <= 0)	// Don't create a negative env_id.
 		generation = 1 << ENVGENSHIFT;
 	e->env_id = generation | (e - envs);
@@ -246,7 +270,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 	env_free_list = e->env_link;
 	*newenv_store = e;
 
-	cprintf("[%08x] new env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
+//	cprintf("[%08x] new env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
 	return 0;
 }
 
@@ -267,6 +291,16 @@ region_alloc(struct Env *e, void *va, size_t len)
 	//   'va' and 'len' values that are not page-aligned.
 	//   You should round va down, and round (va + len) up.
 	//   (Watch out for corner-cases!)
+	void * va_cur = (void *)ROUNDDOWN((uintptr_t) va, PGSIZE); // (uintptr_t??)
+	// len = ROUNDUP(len, PGSIZE); // 没用？
+	struct PageInfo * pp;
+	for( ; va_cur < va+len; va_cur += PGSIZE) {
+		if(NULL == (pp = page_alloc(0))) 
+			panic("region_alloc: page_alloc fail!\n");
+		if(0 != page_insert(e->env_pgdir, pp, va_cur, PTE_U | PTE_W))
+			panic("region_alloc: page_insert fail!\n");
+	}
+	// corner cases??
 }
 
 //
@@ -323,11 +357,29 @@ load_icode(struct Env *e, uint8_t *binary)
 	//  What?  (See env_run() and env_pop_tf() below.)
 
 	// LAB 3: Your code here.
+	// binary = (struct Elf *)binary; // 不能用MATLAB这种类型转换方式！
+	struct Elf * elf = (struct Elf *) binary;
+	if(elf -> e_magic != ELF_MAGIC)
+		panic("bad binary format!");
 
+	struct Proghdr * ph = (struct Proghdr*) ((uint8_t*)elf + elf->e_phoff);
+	struct Proghdr * ph_end = ph + elf -> e_phnum;
+	lcr3(PADDR(e->env_pgdir));
+	for(; ph < ph_end; ph ++) {
+		if(ph->p_type != ELF_PROG_LOAD)
+			continue;
+		region_alloc(e, (void *)ph->p_va, ph->p_memsz);
+		memcpy((void*)ph->p_va, binary + ph->p_offset, ph->p_filesz);
+		// uintptr_t定义为uint32_t，意义是虚拟地址，单位是1并不是4.
+	}
+	lcr3(PADDR(kern_pgdir)); // user pgdir是kern pgdir的超集，只是UVPT不一样。但是程序运行在内核空间就应该使用内核空间的页目录
+	
 	// Now map one page for the program's initial stack
 	// at virtual address USTACKTOP - PGSIZE.
 
 	// LAB 3: Your code here.
+	region_alloc(e, (void *)(USTACKTOP-PGSIZE), PGSIZE); // 不要用page_alloc+page_insert实现
+	e->env_tf.tf_eip = (uintptr_t)(elf->e_entry); 
 }
 
 //
@@ -341,6 +393,12 @@ void
 env_create(uint8_t *binary, enum EnvType type)
 {
 	// LAB 3: Your code here.
+	struct Env * e = NULL;
+	int r;
+	if((r = env_alloc(&e, 0)) < 0) // Linux: init进程号为0. 不能用curenv->env_id作为parent_id。curenv并不指向init进程，它是一个NULL指针。这个函数(env_create)结束后，才有了第一个进程。注意赋值的优先级仅在逗号之前，所有操作都会优先于赋值。
+		panic("env_create: %e\n", r);
+	load_icode(e, binary);
+	e->env_type = type;
 }
 
 //
@@ -426,6 +484,13 @@ env_pop_tf(struct Trapframe *tf)
 		"\tpopl %%ds\n"
 		"\taddl $0x8,%%esp\n" /* skip tf_trapno and tf_errcode */
 		"\tiret\n"
+/*
+popl %eip
+popl %cs
+popl %eflags
+如果iret导致CPL切换，从用户跳到内核，还要执行下面两句：
+
+*/
 		: : "g" (tf) : "memory");
 	panic("iret failed");  /* mostly to placate the compiler */
 }
@@ -457,7 +522,14 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 
 	// LAB 3: Your code here.
-
-	panic("env_run not yet implemented");
+	// panic("env_run not yet implemented");
+	if(curenv != NULL && curenv->env_status == ENV_RUNNING)
+		curenv->env_status = ENV_RUNNABLE;
+	curenv = e;
+	curenv->env_status = ENV_RUNNING;
+	curenv->env_runs++;
+	lcr3(PADDR(curenv->env_pgdir));
+	
+	env_pop_tf(& curenv->env_tf);
 }
 

@@ -3,12 +3,14 @@
 
 OUTPUT_FORMAT("elf32-i386", "elf32-i386", "elf32-i386")
 OUTPUT_ARCH(i386)
-ENTRY(_start)
+ENTRY(_start) 
+/* entry point */
 
 SECTIONS
 {
 	/* Load programs at this address: "." means the current address */
 	. = 0x800020;
+/* 能不能改成其他值？JOS没有指定代码放在哪里？*/
 
 	.text : {
 		*(.text .stub .text.* .gnu.linkonce.t.*)
@@ -22,7 +24,7 @@ SECTIONS
 
 	/* Adjust the address for the data segment to the next page */
 	. = ALIGN(0x1000);
-
+/* 为什么要页对齐？权限不一样。rodata and data */
 	.data : {
 		*(.data)
 	}
@@ -58,6 +60,7 @@ SECTIONS
 				   for this section */
 	}
 
+/*strip命令，程序瘦身。objcopy命令，把一个段删除。*/
 	.stabstr : {
 		__STABSTR_BEGIN__ = DEFINED(__STABSTR_BEGIN__) ? __STABSTR_BEGIN__ : .;
 		*(.stabstr);

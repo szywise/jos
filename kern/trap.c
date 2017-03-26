@@ -65,7 +65,10 @@ trap_init(void)
 	extern struct Segdesc gdt[];
 
 	// LAB 3: Your code here.
-
+//完善idt,注册进去。
+	lidt();
+	struct Gatedesc gate;
+	SETGATE(gate, 1, 0, off, DPL);
 	// Per-CPU setup 
 	trap_init_percpu();
 }

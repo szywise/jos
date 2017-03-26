@@ -46,10 +46,25 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
+devide:
+TRAPHANDLER("divide", T_DIVIDE);
 
+TRAPHANDLER("debug", T_DEBUG);
+TRAPHANDLER("divide", T_NMI);
+TRAPHANDLER("divide", T_BRKPT);
+TRAPHANDLER("divide", T_OFLOW);
+TRAPHANDLER("divide", T_BOUND);
+TRAPHANDLER("divide", T_ILLOP);
+TRAPHANDLER("divide", T_DEVICE);
 
 
 /*
  * Lab 3: Your code here for _alltraps
  */
+ _alltraps:
+	pushal				#push values, to make the stack look like a struct Trapframe
+	mov		GD_KD, %ds
+	mov		GD_KD, %es
+	pushl	%esp		# pass a pointer to the Trapframe, as an argument to trap()
+	call	trap		# can trap ever return?
 
