@@ -202,8 +202,16 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
+#ifdef PENTIUM	
+	lcr4(rcr4() | CR4_PSE);
+	for (int i = 0; i < 64; i++) {
+		uint32_t va = i * PTSIZE + KERNBASE;
+		kern_pgdir[PDX(va)] = i*PTSIZE | PTE_PS | PTE_P | PTE_W;
+	}
+#else
 	boot_map_region(kern_pgdir, KERNBASE, 1<<28,
 					0, PTE_W | PTE_P);
+#endif
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
