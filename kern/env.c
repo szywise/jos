@@ -270,7 +270,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 	env_free_list = e->env_link;
 	*newenv_store = e;
 
-//	cprintf("[%08x] new env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
+	cprintf("[%08x] new env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
 	return 0;
 }
 
@@ -369,6 +369,8 @@ load_icode(struct Env *e, uint8_t *binary)
 		if(ph->p_type != ELF_PROG_LOAD)
 			continue;
 		region_alloc(e, (void *)ph->p_va, ph->p_memsz);
+		if(ph->p_filesz < ph->p_memsz) // bss
+			memset((void*)ph->p_va, 0, ph->p_memsz);
 		memcpy((void*)ph->p_va, binary + ph->p_offset, ph->p_filesz);
 		// uintptr_t定义为uint32_t，意义是虚拟地址，单位是1并不是4.
 	}
@@ -488,8 +490,11 @@ env_pop_tf(struct Trapframe *tf)
 popl %eip
 popl %cs
 popl %eflags
-如果iret导致CPL切换，从用户跳到内核，还要执行下面两句：
-
+if iret导致CPL切换，从用户跳到内核，还要执行下面两句：
+	pop %esp
+	pop %ss
+end
+resume execution
 */
 		: : "g" (tf) : "memory");
 	panic("iret failed");  /* mostly to placate the compiler */

@@ -65,10 +65,50 @@ trap_init(void)
 	extern struct Segdesc gdt[];
 
 	// LAB 3: Your code here.
-//完善idt,注册进去。
-	lidt();
-	struct Gatedesc gate;
-	SETGATE(gate, 1, 0, off, DPL);
+	extern void (handler0)(void);
+	extern void (handler1)(void);
+	extern void (handler2)(void);
+	extern void (handler3)(void);
+	extern void (handler4)(void);
+	extern void (handler5)(void);
+	extern void (handler6)(void);
+	extern void (handler7)(void);
+	extern void (handler8)(void);
+//	extern void (handler9)(void);
+	extern void (handler10)(void);
+	extern void (handler11)(void);
+	extern void (handler12)(void);
+	extern void (handler13)(void);
+	extern void (handler14)(void);
+//	extern void (handler15)(void);
+	extern void (handler16)(void);
+	extern void (handler17)(void);
+	extern void (handler18)(void);
+	extern void (handler19)(void);
+	extern void (handler48)(void);
+//	#define SETGATE(gate, istrap, sel, off, dpl)
+	SETGATE(idt[0], 1, GD_KT, handler0, 0);
+	SETGATE(idt[1], 1, GD_KT, handler1, 0);
+	SETGATE(idt[2], 1, GD_KT, handler2, 0);
+	SETGATE(idt[3], 1, GD_KT, handler3, 3);
+	SETGATE(idt[4], 1, GD_KT, handler4, 0);
+	SETGATE(idt[5], 1, GD_KT, handler5, 0);
+	SETGATE(idt[6], 1, GD_KT, handler6, 0);
+	SETGATE(idt[7], 1, GD_KT, handler7, 0);
+	SETGATE(idt[8], 1, GD_KT, handler6, 0);
+//	SETGATE(idt[9], 1, GD_KT, handler9, 0);
+	SETGATE(idt[10], 1, GD_KT, handler10, 0);
+	SETGATE(idt[11], 1, GD_KT, handler11, 0);
+	SETGATE(idt[12], 1, GD_KT, handler12, 0);
+	SETGATE(idt[13], 1, GD_KT, handler13, 0);
+	SETGATE(idt[14], 1, GD_KT, handler14, 0);
+//	SETGATE(idt[15], 1, GD_KT, handler15, 0);
+	SETGATE(idt[16], 1, GD_KT, handler16, 0);
+	SETGATE(idt[17], 1, GD_KT, handler17, 0);
+	SETGATE(idt[18], 1, GD_KT, handler18, 0);
+	SETGATE(idt[19], 1, GD_KT, handler19, 0);
+
+	SETGATE(idt[48], 0, GD_KT, handler48, 3);
 	// Per-CPU setup 
 	trap_init_percpu();
 }
@@ -146,7 +186,19 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
-
+	switch(tf->tf_trapno) {
+		case T_BRKPT: // 3
+			monitor(tf); // does not return
+			return;
+		case T_PGFLT: // 14
+			page_fault_handler(tf);
+			return;
+		case T_SYSCALL: // 48
+			tf->tf_regs.reg_eax = syscall(
+				tf->tf_regs.reg_eax, tf->tf_regs.reg_edx, tf->tf_regs.reg_ecx,
+				tf->tf_regs.reg_ebx, tf->tf_regs.reg_edi, tf->tf_regs.reg_esi);
+			return;
+	}
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
 	if (tf->tf_cs == GD_KT)
@@ -207,9 +259,17 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
+	struct PageInfo * pp = page_alloc(1);
+	if(pp == NULL)
+		panic("not enough space!");
+	int perm = ((tf->tf_cs & 3) == 3) ? (PTE_U | PTE_W) : PTE_W;
+	//int perm = (tf->tf_cs & 3) << 1;
+	page_insert(curenv->env_pgdir, pp, (void*)fault_va, perm);
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
+
+panic("kernel page fault");
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",

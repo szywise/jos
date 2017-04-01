@@ -46,25 +46,57 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
-devide:
-TRAPHANDLER("divide", T_DIVIDE);
-
-TRAPHANDLER("debug", T_DEBUG);
-TRAPHANDLER("divide", T_NMI);
-TRAPHANDLER("divide", T_BRKPT);
-TRAPHANDLER("divide", T_OFLOW);
-TRAPHANDLER("divide", T_BOUND);
-TRAPHANDLER("divide", T_ILLOP);
-TRAPHANDLER("divide", T_DEVICE);
-
+	TRAPHANDLER_NOEC(handler0, T_DIVIDE)
+	TRAPHANDLER_NOEC(handler1, T_DEBUG);
+	TRAPHANDLER_NOEC(handler2, T_NMI);
+	TRAPHANDLER_NOEC(handler3, T_BRKPT);
+	TRAPHANDLER_NOEC(handler4, T_OFLOW);
+	TRAPHANDLER_NOEC(handler5, T_BOUND);
+	TRAPHANDLER_NOEC(handler6, T_ILLOP);
+	TRAPHANDLER_NOEC(handler7, T_DEVICE);
+	TRAPHANDLER_NOEC(handler8, T_DBLFLT);
+//	TRAPHANDLER(handler9, T_COPROC); //
+	TRAPHANDLER(handler10, T_TSS);
+	TRAPHANDLER(handler11, T_SEGNP);
+	TRAPHANDLER(handler12, T_STACK);
+	TRAPHANDLER(handler13, T_GPFLT);
+	TRAPHANDLER(handler14, T_PGFLT);
+//	TRAPHANDLER(handler15, T_RES); // 
+	TRAPHANDLER_NOEC(handler16, T_FPERR);
+	TRAPHANDLER(handler17, T_ALIGN);
+ 	TRAPHANDLER(handler18, T_MCHK);
+ 	TRAPHANDLER(handler19, T_SIMDERR);
+/*	TRAPHANDLER(handler20, T_DBLFLT);
+ *	TRAPHANDLER(handler21, T_DBLFLT);
+ *	TRAPHANDLER(handler22, T_DBLFLT);
+ *	TRAPHANDLER(handler23, T_DBLFLT);
+ *	TRAPHANDLER(handler24, T_DBLFLT);
+ *	TRAPHANDLER(handler25, T_DBLFLT);
+ *	TRAPHANDLER(handler26, T_DBLFLT);
+ *	TRAPHANDLER(handler27, T_DBLFLT);
+ *	TRAPHANDLER(handler28, T_DBLFLT);
+ *	TRAPHANDLER(handler29, T_DBLFLT);
+ *	TRAPHANDLER(handler30, T_DBLFLT);
+ *	TRAPHANDLER(handler31, T_DBLFLT);
+ *	TRAPHANDLER(handler32, T_DBLFLT);
+ */
+ 	TRAPHANDLER_NOEC(handler48, T_SYSCALL);
 
 /*
  * Lab 3: Your code here for _alltraps
  */
  _alltraps:
-	pushal				#push values, to make the stack look like a struct Trapframe
-	mov		GD_KD, %ds
-	mov		GD_KD, %es
-	pushl	%esp		# pass a pointer to the Trapframe, as an argument to trap()
+# push other registers to make a trapframe in kernel stack
+	pushl	%ds
+	pushl	%es
+	pushal				# push all general-purpose registers
+	
+# set segments for trap handler
+	mov		$GD_KD, %eax
+	mov		%ax, %ds
+	mov		%ax, %es
+
+# jump to trap
+	pushl	%esp		# pass a Trapframe pointer as an argument to trap()
 	call	trap		# can trap ever return?
 
