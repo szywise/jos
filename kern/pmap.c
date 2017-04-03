@@ -9,6 +9,7 @@
 #include <kern/pmap.h>
 #include <kern/kclock.h>
 
+#define PENTIUM
 // These variables are set by i386_detect_memory()
 size_t npages;			// Amount of physical memory (in pages)
 static size_t npages_basemem;	// Amount of base memory (in pages)
@@ -202,7 +203,7 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
-#ifdef PENTIUM	
+#ifdef PENTIUM
 	lcr4(rcr4() | CR4_PSE);
 	for (int i = 0; i < 64; i++) {
 		uint32_t va = i * PTSIZE + KERNBASE;
@@ -303,7 +304,7 @@ page_alloc(int alloc_flags)
 {
 	// Fill this function in
 	if(!page_free_list) {
-		cprintf("[DBG] page_alloc: space is not enough!\n");
+		//cprintf("[DBG] page_alloc: space is not enough!\n");
 		return NULL;
 	}
 	
@@ -711,9 +712,12 @@ check_kern_pgdir(void)
 
 
 	// check phys mem
-	for (i = 0; i < npages * PGSIZE; i += PGSIZE)
+	for (i = 0; i < npages * PGSIZE; i += PGSIZE) {
+		uint32_t i_pa = check_va2pa(pgdir, KERNBASE + i);
+		if(i_pa != i)
+			cprintf("[DBG] fail! i_pa = %08x, i = %08x\n", i_pa, i);
 		assert(check_va2pa(pgdir, KERNBASE + i) == i);
-
+	}
 	// check kernel stack
 	for (i = 0; i < KSTKSIZE; i += PGSIZE)
 		assert(check_va2pa(pgdir, KSTACKTOP - KSTKSIZE + i) == PADDR(bootstack) + i);
@@ -748,10 +752,13 @@ static physaddr_t
 check_va2pa(pde_t *pgdir, uintptr_t va)
 {
 	pte_t *p;
-
 	pgdir = &pgdir[PDX(va)];
 	if (!(*pgdir & PTE_P))
 		return ~0;
+#ifdef PENTIUM
+	if (va >= KERNBASE) // I am being lazy here...
+		return (physaddr_t)PTE_ADDR(*pgdir)+(va&0x003fffff); 
+#endif
 	p = (pte_t*) KADDR(PTE_ADDR(*pgdir));
 	if (!(p[PTX(va)] & PTE_P))
 		return ~0;
