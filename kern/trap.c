@@ -187,11 +187,15 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
 	switch(tf->tf_trapno) {
+		case T_DEBUG: // 1
+			monitor(tf);
+			return;
 		case T_BRKPT: // 3
 			monitor(tf); // does not return
 			return;
 		case T_PGFLT: // 14
-			page_fault_handler(tf);
+			page_fault_handler(tf); // does not return (yet).
+									// kill curenv and trap into monitor.
 			return;
 		case T_SYSCALL: // 48
 			tf->tf_regs.reg_eax = syscall(
@@ -259,7 +263,7 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
-	struct PageInfo * pp = page_alloc(1);
+/*	struct PageInfo * pp = page_alloc(1);
 	if(pp == NULL)
 		panic("not enough space!");
 	int perm = ((tf->tf_cs & 3) == 3) ? (PTE_U | PTE_W) : PTE_W;
@@ -268,8 +272,8 @@ page_fault_handler(struct Trapframe *tf)
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
-
-panic("kernel page fault");
+*/
+	//panic("kernel page fault");
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",

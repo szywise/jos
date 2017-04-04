@@ -10,6 +10,7 @@
 #include <kern/kclock.h>
 #include <kern/env.h>
 
+#define PENTIUM
 // These variables are set by i386_detect_memory()
 size_t npages;			// Amount of physical memory (in pages)
 static size_t npages_basemem;	// Amount of base memory (in pages)
@@ -219,8 +220,16 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
+#ifdef PENTIUM
+	lcr4(rcr4() | CR4_PSE);
+	for (int i = 0; i < 64; i++) {
+		uint32_t va = i * PTSIZE + KERNBASE;
+		kern_pgdir[PDX(va)] = i*PTSIZE | PTE_PS | PTE_P | PTE_W;
+	}
+#else
 	boot_map_region(kern_pgdir, KERNBASE, 1<<28,
 					0, PTE_W | PTE_P);
+#endif
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
@@ -312,7 +321,7 @@ page_alloc(int alloc_flags)
 {
 	// Fill this function in
 	if(!page_free_list) {
-//		cprintf("[DBG] page_alloc: space is not enough!\n");
+		//cprintf("[DBG] page_alloc: space is not enough!\n");
 		return NULL;
 	}
 	
@@ -579,17 +588,18 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
-	va = (uintptr_t)va;
-	uintptr_t va_cur = ROUNDDOWN(va, PGSIZE);
-	for( ; va_cur < va + len; va_cur += PGSIZE) {
+	
+	uintptr_t va_beg = (uintptr_t)va;
+	uintptr_t va_cur = ROUNDDOWN(va_beg, PGSIZE);
+	for( ; va_cur < va_beg + len; va_cur += PGSIZE) {
 		// 善于利用已有函数
-		pte_t* pte = pgdir_walk(env->pgdir, va_cur, 0);
-		if((va_cur >= ULIM) || !pte || !(*pte & PTE_P) || ((perm & *pte) != perm)) {
-			user_mem_check_addr = va_cur;
+		pte_t* pte = pgdir_walk(env->env_pgdir, (void*)va_cur, 0);
+		if((va_cur>=ULIM) || !pte || !(*pte&PTE_P) || ((perm&*pte) != perm)) {
+			user_mem_check_addr = (va_cur<va_beg) ? va_beg : va_cur;
+			// c operator precedence: (any other) > '?:' > '='assignment > ','
 			return -E_FAULT;
 		}
-
-
+	}
 	return 0;
 }
 
@@ -779,9 +789,12 @@ check_kern_pgdir(void)
 		assert(check_va2pa(pgdir, UENVS + i) == PADDR(envs) + i);
 
 	// check phys mem
-	for (i = 0; i < npages * PGSIZE; i += PGSIZE)
+	for (i = 0; i < npages * PGSIZE; i += PGSIZE) {
+		uint32_t i_pa = check_va2pa(pgdir, KERNBASE + i);
+		if(i_pa != i)
+			cprintf("[DBG] fail! i_pa = %08x, i = %08x\n", i_pa, i);
 		assert(check_va2pa(pgdir, KERNBASE + i) == i);
-
+	}
 	// check kernel stack
 	for (i = 0; i < KSTKSIZE; i += PGSIZE)
 		assert(check_va2pa(pgdir, KSTACKTOP - KSTKSIZE + i) == PADDR(bootstack) + i);
@@ -817,10 +830,13 @@ static physaddr_t
 check_va2pa(pde_t *pgdir, uintptr_t va)
 {
 	pte_t *p;
-
 	pgdir = &pgdir[PDX(va)];
 	if (!(*pgdir & PTE_P))
 		return ~0;
+#ifdef PENTIUM
+	if (va >= KERNBASE) // I am being lazy here...
+		return (physaddr_t)PTE_ADDR(*pgdir)+(va&0x003fffff); 
+#endif
 	p = (pte_t*) KADDR(PTE_ADDR(*pgdir));
 	if (!(p[PTX(va)] & PTE_P))
 		return ~0;

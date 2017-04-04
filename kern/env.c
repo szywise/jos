@@ -234,7 +234,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 		return r;
 
 	// Generate an env_id for this environment.
-	generation = (e->env_id + (1 << ENVGENSHIFT)) & ~(NENV - 1); // env_id在第13位上加一个1, 低9位清零 // env_id第一次使用应该是0啊。
+	generation = (e->env_id + (1 << ENVGENSHIFT)) & ~(NENV - 1); // env_id在第13位上加一个1(这样的话16进制显示的时候会好看一点), 低10位清零 // env_id第一次使用应该是0啊。
 	if (generation <= 0)	// Don't create a negative env_id.
 		generation = 1 << ENVGENSHIFT;
 	e->env_id = generation | (e - envs);

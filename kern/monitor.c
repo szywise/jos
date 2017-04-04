@@ -12,6 +12,7 @@
 #include <kern/kdebug.h>
 #include <kern/trap.h>
 #include <kern/pmap.h>
+#include <kern/env.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -23,15 +24,14 @@ struct Command {
 	int (*func)(int argc, char** argv, struct Trapframe* tf);
 };
 
-int mon_showmappings(int argc, char ** argv, struct Trapframe *tf);
-int mon_chperm(int argc, char ** argv, struct Trapframe * tf);
-
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Display backtrace debug infomation", mon_backtrace },
 	{ "showmappings", "Display physical page mappings", mon_showmappings },
 	{ "chperm", "Change the permission of a virtual page", mon_chperm },
+	{ "continue", "Continue execution during a breakpoint exception", mon_continue },
+	{ "stepi", "Single-step one instruction in a breakpoint exception", mon_stepi },
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -81,7 +81,10 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 			ebp_mon, eip_mon, arg[0], arg[1], arg[2], arg[3], arg[4]);
 
 		struct Eipdebuginfo info;
-		debuginfo_eip(eip_mon, &info);
+		if(	debuginfo_eip(eip_mon, &info) < 0) {
+			cprintf("ERROR! debuginfo_eip: failed to read stab table.\n");
+			return 0;
+		}
 		cprintf("         %s:%d: %.*s+%d\n",
 			info.eip_file, info.eip_line, info.eip_fn_namelen, info.eip_fn_name, 
 			eip_mon - info.eip_fn_addr);
@@ -152,6 +155,38 @@ mon_chperm(int argc, char ** argv, struct Trapframe * tf)
 
 mon_chperm_arg_error:
 	cprintf("ERROR: parameters not correct!\n");
+	return 0;
+}
+
+int
+mon_continue(int argc, char ** argv, struct Trapframe *tf)
+{
+	if(tf!=NULL && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG)) {
+		if(tf->tf_trapno == T_DEBUG)
+			write_eflags(read_eflags() & ~FL_TF);
+		extern struct Env *curenv;		// Current environment
+		assert(curenv && curenv->env_status == ENV_RUNNING);
+		env_run(curenv); // does not return
+	}
+
+	// if we get here, then...
+	cprintf("[Not triggered by int1 or int3] Not in a debugging process.\n");
+	return 0;
+}
+
+int
+mon_stepi(int argc, char ** argv, struct Trapframe *tf)
+{
+	if(tf!=NULL && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG)) {
+		if(tf->tf_trapno == T_BRKPT)
+			write_eflags(read_eflags() | FL_TF);
+		extern struct Env *curenv;		// Current environment
+		assert(curenv && curenv->env_status == ENV_RUNNING);
+		env_run(curenv); // does not return
+	}
+
+	// if we get here, then...
+	cprintf("[Not triggered by int1 or int3] Not in a debugging process.\n");
 	return 0;
 }
 
