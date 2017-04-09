@@ -164,7 +164,18 @@ mon_continue(int argc, char ** argv, struct Trapframe *tf)
 	if(tf!=NULL && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG)) {
 		if(tf->tf_trapno == T_DEBUG)
 			write_eflags(read_eflags() & ~FL_TF);
-		extern struct Env *curenv;		// Current environment
+
+		// print debug information
+		struct Eipdebuginfo info;
+		if(debuginfo_eip(tf->tf_eip, &info) < 0) {
+			cprintf("ERROR! mon_continue: debuginfo_eip: failed to read stab table.\n");
+			return 0;
+		}
+		cprintf("=> %s:%d: %.*s+%d\n", info.eip_file, info.eip_line, info.eip_fn_namelen,
+			info.eip_fn_name, tf->tf_eip - info.eip_fn_addr);
+
+		// return to kernel monitor
+		extern struct Env *curenv;
 		assert(curenv && curenv->env_status == ENV_RUNNING);
 		env_run(curenv); // does not return
 	}
@@ -180,6 +191,17 @@ mon_stepi(int argc, char ** argv, struct Trapframe *tf)
 	if(tf!=NULL && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG)) {
 		if(tf->tf_trapno == T_BRKPT)
 			write_eflags(read_eflags() | FL_TF);
+
+		// print debug information
+		struct Eipdebuginfo info;
+		if(debuginfo_eip(tf->tf_eip, &info) < 0) {
+			cprintf("ERROR! mon_stepi: debuginfo_eip: failed to read stab table.\n");
+			return 0;
+		}
+		cprintf("=> %s:%d: %.*s+%d\n", info.eip_file, info.eip_line, info.eip_fn_namelen,
+			info.eip_fn_name, tf->tf_eip - info.eip_fn_addr);
+
+		// return to kernel monitor
 		extern struct Env *curenv;		// Current environment
 		assert(curenv && curenv->env_status == ENV_RUNNING);
 		env_run(curenv); // does not return

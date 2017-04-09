@@ -263,6 +263,8 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
+	if(tf->tf_cs & 3 == 3)
+		panic("kernel page fault");
 /*	struct PageInfo * pp = page_alloc(1);
 	if(pp == NULL)
 		panic("not enough space!");
@@ -273,7 +275,6 @@ page_fault_handler(struct Trapframe *tf)
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
 */
-	//panic("kernel page fault");
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",
