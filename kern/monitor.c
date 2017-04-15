@@ -12,7 +12,7 @@
 #include <kern/kdebug.h>
 #include <kern/trap.h>
 #include <kern/pmap.h>
-#include <kern/env.h>
+//#include <kern/env.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -30,8 +30,8 @@ static struct Command commands[] = {
 	{ "backtrace", "Display backtrace debug infomation", mon_backtrace },
 	{ "showmappings", "Display physical page mappings", mon_showmappings },
 	{ "chperm", "Change the permission of a virtual page", mon_chperm },
-	{ "continue", "Continue execution during a breakpoint exception", mon_continue },
-	{ "stepi", "Single-step one instruction in a breakpoint exception", mon_stepi },
+/*	{ "continue", "Continue execution during a breakpoint exception", mon_continue },
+	{ "stepi", "Single-step one instruction in a breakpoint exception", mon_stepi },*/
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -157,7 +157,7 @@ mon_chperm_arg_error:
 	cprintf("ERROR: parameters not correct!\n");
 	return 0;
 }
-
+/*
 int
 mon_continue(int argc, char ** argv, struct Trapframe *tf)
 {
@@ -189,7 +189,7 @@ mon_stepi(int argc, char ** argv, struct Trapframe *tf)
 	cprintf("[Not triggered by int1 or int3] Not in a debugging process.\n");
 	return 0;
 }
-
+*/
 /***** Kernel monitor command interpreter *****/
 
 #define WHITESPACE "\t\r\n "

@@ -191,26 +191,7 @@ env_setup_vm(struct Env *e)
 	e->env_pgdir = (pde_t *) page2kva(p); // | PTE_U | PTE_W | PTE_P);??
 	memcpy(e->env_pgdir, kern_pgdir, PGSIZE);
 	
-/*
-// UENV, UTOP
-	boot_map_region(e->env_pgdir, UENVS, sizeof(struct Env) * NENV,
-					PADDR(envs), PTE_U | PTE_P);
-// UPAGES
-	boot_map_region(e->env_pgdir, UPAGES, sizeof(struct PageInfo) * npages,
-					PADDR(pages), PTE_U | PTE_P);
-	// UVPT maps the env's own page table read-only.
-	// Permissions: kernel R, user R
-*/
-// UVPT
 	e->env_pgdir[PDX(UVPT)] = PADDR(e->env_pgdir) | PTE_P | PTE_U;
-/*
-// KSTACKTOP-KSTKSIZE
-	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE,
-					PADDR(bootstack), PTE_W | PTE_P);
-// KENRBASE
-	boot_map_region(kern_pgdir, KERNBASE, 1<<28,
-					0, PTE_W | PTE_P);
-*/
 	return 0;
 }
 
@@ -553,7 +534,6 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 
 	// LAB 3: Your code here.
-	// panic("env_run not yet implemented");
 	if(curenv != NULL && curenv->env_status == ENV_RUNNING)
 		curenv->env_status = ENV_RUNNABLE;
 	curenv = e;
@@ -561,6 +541,7 @@ env_run(struct Env *e)
 	curenv->env_runs++;
 	lcr3(PADDR(curenv->env_pgdir));
 	
+	unlock_kernel();
 	env_pop_tf(& curenv->env_tf);
 }
 
