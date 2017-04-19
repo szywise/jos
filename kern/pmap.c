@@ -443,7 +443,8 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 			return NULL;
 
 		new_pt->pp_ref++; // =1?
-		*pde_ptr = page2pa(new_pt) | PTE_U | PTE_W | PTE_P; // insert the PDE for the new page table into page directory. 页目录中的页表项是物理地址？需要用指针！
+		*pde_ptr = page2pa(new_pt) | PTE_U | PTE_W | PTE_P; 
+		// insert the PDE for the new page table into page directory. 需要用指针！
 
 		// "...and pgdir_walk returns a pointer into the new page table page"
 		//return (pte_t*)(KADDR(PTE_ADDR(pde_ptr)));
@@ -524,16 +525,10 @@ page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 	if(pte_ptr == NULL)
 		return -E_NO_MEM;
 
-// elegant way to consider the corner case: increase pp_ref first	
+	// elegant way to consider the corner case: increase pp_ref first	
 	pp->pp_ref++; // pgdir_walk里面给刚分配的页表加1，这里给刚插入的物理页加1。
 	if(*pte_ptr & PTE_P) {
-/*		if(page2pa(pp) == PTE_ADDR(*pte_ptr)) //if(pp != page_lookup(pgdir, va, 0))已经有了pte就相当于已经完成了页式转换，不用再跑一遍
-		{
-			pp->pp_ref--;
-			cprintf("[DBG] page[%d]={pp_ref=%d}\n",pp-pages,pp->pp_ref);
-		}
-		else
-*/			page_remove(pgdir, va); // 如果虚存里面的物理页面被修改，重新加载物理页面会丢弃修改??
+		page_remove(pgdir, va); // 如果虚存里面的物理页面被修改，重新加载物理页面会丢弃修改??
 	}
 	*pte_ptr = page2pa(pp) | perm | PTE_P; // insert pp into the page table. NOTE: PTE_P must be set!!
 	
