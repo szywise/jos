@@ -40,7 +40,7 @@ sched_yield(void)
 			env_run(envs + cur_idx);
 	}
 	if(envs[cur_idx].env_status == ENV_RUNNING)
-		env_run(envs + cur_idx);	
+		env_run(envs + cur_idx);
 
 	// sched_halt never returns
 	sched_halt();

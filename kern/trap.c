@@ -333,18 +333,15 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
-	if(tf->tf_cs & 3 == 3)
-		panic("kernel page fault");
-/*	struct PageInfo * pp = page_alloc(1);
-	if(pp == NULL)
-		panic("not enough space!");
-	int perm = ((tf->tf_cs & 3) == 3) ? (PTE_U | PTE_W) : PTE_W;
-	//int perm = (tf->tf_cs & 3) << 1;
-	page_insert(curenv->env_pgdir, pp, (void*)fault_va, perm);
+	if((tf->tf_cs & 3) != 3)
+		panic("kernel page fault: 0x%08x [%s, %s, %s]",
+			fault_va,
+			tf->tf_err & 4 ? "user" : "kernel",
+			tf->tf_err & 2 ? "write" : "read",
+			tf->tf_err & 1 ? "protection" : "not-present");
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
-*/
 
 	// Call the environment's page fault upcall, if one exists.  Set up a
 	// page fault stack frame on the user exception stack (below
@@ -375,6 +372,31 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
 	// LAB 4: Your code here.
+	if(curenv->env_pgfault_upcall != NULL) {
+		user_mem_assert(curenv, (void*)(UXSTACKTOP-PGSIZE), PGSIZE, PTE_W);
+		// 直接就可以操作，要什么memcpy
+		uintptr_t uxesp;
+		if(tf->tf_esp > UXSTACKTOP-PGSIZE && tf->tf_esp < UXSTACKTOP-1)
+			uxesp = tf->tf_esp - sizeof(struct UTrapframe) - 4;
+		else
+			uxesp = UXSTACKTOP - sizeof(struct UTrapframe);
+		struct UTrapframe * utf = (struct UTrapframe *) uxesp;
+		utf->utf_esp = tf->tf_esp;
+		utf->utf_eflags = tf->tf_eflags;
+		utf->utf_eip = tf->tf_eip;
+		utf->utf_regs = tf->tf_regs;
+		utf->utf_err = tf->tf_err;
+		utf->utf_fault_va = fault_va;
+
+		curenv->env_tf.tf_eip = (uintptr_t) curenv->env_pgfault_upcall;
+		curenv->env_tf.tf_esp = uxesp;
+		env_run(curenv);
+
+/*		asm volatile("mov %0, %%ss"  : : "a"(GD_UD));
+ *		asm volatile("mov %0, %%esp" : : "r"(uxesp));
+ *		((void(*)(void)) (curenv->env_pgfault_upcall))();
+ */
+	}
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",
