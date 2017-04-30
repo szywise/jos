@@ -92,6 +92,11 @@ trap_init(void)
 	extern void (handler17)(void);
 	extern void (handler18)(void);
 	extern void (handler19)(void);
+	extern void (handler32)(void);
+	extern void (handler33)(void);
+	extern void (handler36)(void);
+	extern void (handler39)(void);
+	extern void (handler46)(void);
 	extern void (handler48)(void);
 //	#define SETGATE(gate, istrap, sel, off, dpl)
 	SETGATE(idt[0], 1, GD_KT, handler0, 0);
@@ -108,12 +113,18 @@ trap_init(void)
 	SETGATE(idt[11], 1, GD_KT, handler11, 0);
 	SETGATE(idt[12], 1, GD_KT, handler12, 0);
 	SETGATE(idt[13], 1, GD_KT, handler13, 0);
-	SETGATE(idt[14], 1, GD_KT, handler14, 0);
+	SETGATE(idt[14], 0, GD_KT, handler14, 0);
 //	SETGATE(idt[15], 1, GD_KT, handler15, 0);
 	SETGATE(idt[16], 1, GD_KT, handler16, 0);
 	SETGATE(idt[17], 1, GD_KT, handler17, 0);
 	SETGATE(idt[18], 1, GD_KT, handler18, 0);
 	SETGATE(idt[19], 1, GD_KT, handler19, 0);
+
+	SETGATE(idt[32], 0, GD_KT, handler32, 0);
+	SETGATE(idt[33], 0, GD_KT, handler33, 0);
+	SETGATE(idt[36], 0, GD_KT, handler36, 0);
+	SETGATE(idt[39], 0, GD_KT, handler39, 0);
+	SETGATE(idt[46], 0, GD_KT, handler46, 0);
 
 	SETGATE(idt[48], 0, GD_KT, handler48, 3);
 	// Per-CPU setup 
@@ -230,6 +241,9 @@ trap_dispatch(struct Trapframe *tf)
 			page_fault_handler(tf); // does not return (yet).
 									// kill curenv and trap into monitor.
 			return;
+		case (IRQ_OFFSET + IRQ_TIMER):
+			lapic_eoi();
+			sched_yield();
 		case T_SYSCALL: // 48
 			tf->tf_regs.reg_eax = syscall(
 				tf->tf_regs.reg_eax, tf->tf_regs.reg_edx, tf->tf_regs.reg_ecx,
@@ -373,13 +387,13 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 4: Your code here.
 	if(curenv->env_pgfault_upcall != NULL) {
-		user_mem_assert(curenv, (void*)(UXSTACKTOP-PGSIZE), PGSIZE, PTE_W);
 		// 直接就可以操作，要什么memcpy
 		uintptr_t uxesp;
 		if(tf->tf_esp > UXSTACKTOP-PGSIZE && tf->tf_esp < UXSTACKTOP-1)
 			uxesp = tf->tf_esp - sizeof(struct UTrapframe) - 4;
 		else
 			uxesp = UXSTACKTOP - sizeof(struct UTrapframe);
+		user_mem_assert(curenv, (void*)uxesp, sizeof(struct UTrapframe), PTE_W);
 		struct UTrapframe * utf = (struct UTrapframe *) uxesp;
 		utf->utf_esp = tf->tf_esp;
 		utf->utf_eflags = tf->tf_eflags;

@@ -25,8 +25,8 @@ pgfault(struct UTrapframe *utf)
 	//   (see <inc/memlayout.h>).
 
 	// LAB 4: Your code here.
-	pte_t * pte_ptr = (pte_t*)uvpt[PGNUM(addr)];
-	if(!(err & FEC_WR) || !(*pte_ptr & PTE_COW))
+	pte_t pte = (pte_t)(uvpt[PGNUM(addr)]);
+	if(!(err & FEC_WR) || !(pte & PTE_COW))
 		panic("faulting access is not a write to a COW page");
 
 	// Allocate a new page, map it at a temporary location (PFTEMP),
@@ -38,8 +38,9 @@ pgfault(struct UTrapframe *utf)
 	// LAB 4: Your code here.
 	if((r = sys_page_alloc(0, (void*)PFTEMP, PTE_U | PTE_W | PTE_P)) < 0)
 		panic("sys_page_alloc: %e", r);
-	memcpy(PFTEMP, addr, PGSIZE);
-	if((r = sys_page_map(0, PFTEMP, 0, addr, PTE_U | PTE_W | PTE_P)) < 0)
+	void* addr_pg = ROUNDDOWN(addr, PGSIZE);
+	memcpy(PFTEMP, addr_pg, PGSIZE);
+	if((r = sys_page_map(0, PFTEMP, 0, addr_pg, PTE_U | PTE_W | PTE_P)) < 0)
 		panic("sys_page_map: %e", r);
 	if((r = sys_page_unmap(0, PFTEMP)) < 0)
 		panic("sys_page_unmap: %e", r);
@@ -113,14 +114,16 @@ fork(void)
 	uintptr_t addr = 0;
 	uintptr_t addr_top;
 	int perm;
-	while(addr < UTOP){
+	while(addr < UTOP - PGSIZE){
 		if(!(uvpd[PDX(addr)] & PTE_P)) {
 			addr += PTSIZE;
 			continue;
 		}
 		addr_top = addr + PTSIZE;
+		if(addr_top == UTOP)
+			addr_top -= PGSIZE; // skip User Exception Stack
 		while(addr < addr_top) {
-			perm = uvpt[PGNUM(addr)] & 3; // should I take lower 12 bits or 3 bits?
+			perm = uvpt[PGNUM(addr)] & 0xfff; // should I take lower 12 bits or 3 bits?
 			if(!(perm & PTE_P)) {
 				addr += PGSIZE;
 				continue;
