@@ -71,7 +71,11 @@ duppage(envid_t envid, unsigned pn)
 			return r;
 	}
 	else
-		if((r = sys_page_map(0, addr, envid, addr, PGOFF(uvpt[PGNUM(addr)]))) < 0)
+		if((r = sys_page_map(0, addr, envid, addr, PTE_U | PTE_P)) < 0)
+			// don't use 'PGOFF(uvpt[PGNUM(addr)])' as perm, because
+			// the page from srcenv may be accessed or dirty, and we don't
+			// want dstenv's newly-mapped page to be tagged as 'accessed'
+			// or dirty. This is checked in sys_page_map
 			return r;
 	return 0;
 }
@@ -123,23 +127,24 @@ fork(void)
 		if(addr_top == UTOP)
 			addr_top -= PGSIZE; // skip User Exception Stack
 		while(addr < addr_top) {
-			perm = uvpt[PGNUM(addr)] & 0xfff; // should I take lower 12 bits or 3 bits?
+			perm = uvpt[PGNUM(addr)] & 7; // should I take lower 12 bits or 3 bits?
 			if(!(perm & PTE_P)) {
 				addr += PGSIZE;
 				continue;
 			}
-			duppage(envid, PGNUM(addr));
+			if((r = duppage(envid, PGNUM(addr))) < 0)
+				panic("duppage failed at addr 0x%08x: %e", addr, r);
 			addr += PGSIZE;
 		}
 	}
 
 	if((r = sys_page_alloc(envid, (void*)(UXSTACKTOP-PGSIZE), PTE_U | PTE_W | PTE_P)) < 0)
-		cprintf("sys_page_alloc() failed: %e\n", r);
+		panic("sys_page_alloc() failed: %e", r);
 	extern void _pgfault_upcall(void);
 	if((r = sys_env_set_pgfault_upcall(envid, (void*)_pgfault_upcall)) < 0)
-		cprintf("sys_env_set_pgfault_upcall() failed: %e\n", r);
+		panic("sys_env_set_pgfault_upcall() failed: %e", r);
 	if ((r = sys_env_set_status(envid, ENV_RUNNABLE)) < 0)
-		panic("sys_env_set_status: %e", r);
+		panic("sys_env_set_status failed: %e", r);
 
 	return envid;
 }
@@ -148,6 +153,55 @@ fork(void)
 int
 sfork(void)
 {
-	panic("sfork not implemented");
-	return -E_INVAL;
+	envid_t envid;
+	int r;
+
+	set_pgfault_handler(pgfault);
+
+	envid = sys_exofork();
+	if(envid < 0)
+		panic("sys_exofork: %e", envid);
+	if(envid == 0) {
+		// We're the child.
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	}
+
+	// We're the parent.
+	uintptr_t addr = 0;
+	uintptr_t addr_top;
+	int perm;
+	while(addr < UTOP - 3*PGSIZE){
+		if(!(uvpd[PDX(addr)] & PTE_P)) {
+			addr += PTSIZE;
+			continue;
+		}
+		addr_top = addr + PTSIZE;
+		if(addr_top == UTOP)
+			addr_top -= 3*PGSIZE; // skip User Exception Stack
+		while(addr < addr_top) {
+			perm = uvpt[PGNUM(addr)] & 7; // should I take lower 12 bits or 3 bits?
+			// you should take lower 3 bits, because 'accessed' and 'dirty' are NOT 
+			// permissions; they are status.
+			if(!(perm & PTE_P)) {
+				addr += PGSIZE;
+				continue;
+			}
+			if((r = sys_page_map(0, (void *)addr, envid, (void *)addr, perm)) < 0)
+				panic("sys_page_map failed at 0x%08x: %e", addr, r);
+			addr += PGSIZE;
+		}
+	}
+
+	if((r = duppage(envid, PGNUM(USTACKTOP-PGSIZE))) < 0)
+		panic("duppage of normal user stack failed: %e");
+	if((r = sys_page_alloc(envid, (void*)(UXSTACKTOP-PGSIZE), PTE_U | PTE_W | PTE_P)) < 0)
+		panic("sys_page_alloc() failed: %e", r);
+	extern void _pgfault_upcall(void);
+	if((r = sys_env_set_pgfault_upcall(envid, (void*)_pgfault_upcall)) < 0)
+		panic("sys_env_set_pgfault_upcall() failed: %e", r);
+	if ((r = sys_env_set_status(envid, ENV_RUNNABLE)) < 0)
+		panic("sys_env_set_status: %e", r);
+
+	return envid;
 }
